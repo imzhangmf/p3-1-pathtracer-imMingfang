@@ -528,7 +528,6 @@ Spectrum PathTracer::estimate_direct_lighting_hemisphere(const Ray& r, const Int
   // Write your sampling loop here
   // COMMENT OUT `normal_shading` IN `est_radiance_global_illumination` BEFORE YOU BEGIN
   for (int i = 0; i < num_samples; i++) {
-    //direction in world space
     Vector3D w_in = hemisphereSampler->get_sample();
 
     Vector3D raydir = o2w * w_in;
@@ -536,15 +535,12 @@ Spectrum PathTracer::estimate_direct_lighting_hemisphere(const Ray& r, const Int
 
     Ray r = Ray(rayorig, raydir);
     Intersection newIsect;
-    bool inter = bvh->intersect(r, &newIsect);
+    bool hit = bvh->intersect(r, &newIsect);
 
-    if (inter) {
-      //bsdf at point
-      Spectrum b = isect.bsdf->f(w_out, w_in);
-      //incoming radiance
-      Spectrum e = newIsect.bsdf->get_emission();
-      //w_in.z is cosine of angle between w_in and normal vector
-      L_out += b * e * cos_theta(w_in);
+    if (hit) {
+      Spectrum bsdff = isect.bsdf->f(w_out, w_in);
+      Spectrum emiss = newIsect.bsdf->get_emission();
+      L_out += bsdff * emiss * cos_theta(w_in);
     }
   }
 
@@ -585,20 +581,15 @@ Spectrum PathTracer::estimate_direct_lighting_importance(const Ray& r, const Int
 
     for (int i = 0; i < num_samples; i++) {
         Spectrum radiance = light->sample_L(hit_p, &wi, &distToLight, &pdf);
-
         // In order to pass it to the BSDF, you need to compute it in object space
         Vector3D w_in = w2o * wi;
-
         if (w_in.z >= 0) {
             Vector3D rayorig = hit_p + (EPS_D * wi);
             Ray r2 = Ray(rayorig, wi);
             r2.max_t = distToLight;
-
             Intersection newIsect;
-
-            bool inter = bvh->intersect(r2, &newIsect);
-
-            if (!inter) {
+            bool hit = bvh->intersect(r2, &newIsect);
+            if (!hit) {
                 Spectrum b = isect.bsdf->f(w_out, w_in);
                 L_out += (radiance * b * cos_theta(w_in)) / pdf;
             }
@@ -724,13 +715,11 @@ Spectrum PathTracer::raytrace_pixel(size_t x, size_t y) {
     for (; i < num_samples; i++) {
       if (i % samplesPerBatch == 0 && i > 1) {
         double mean = s1/double(i);
-        double varSquare = (s2 - (s1*s1)/double(i))/(i - 1.0);
-        if (1.96*sqrt(varSquare/double(i)) <= maxTolerance*mean) {
-          break;
-        } 
+        double varance = (s2 - (s1*s1)/double(i))/(i - 1.0);
+        if (1.96*sqrt(varance/double(i)) <= maxTolerance*mean) break;
       }
-      Vector2D randomOffset = gridSampler->get_sample();
-      Ray ray = camera->generate_ray((x + randomOffset.x)/width, (y + randomOffset.y)/height);
+      Vector2D ranOff = gridSampler->get_sample();
+      Ray ray = camera->generate_ray((x + ranOff.x)/width, (y + ranOff.y)/height);
       ray.depth = max_ray_depth;
       Spectrum estIllum = est_radiance_global_illumination(ray);
       spect += estIllum;
