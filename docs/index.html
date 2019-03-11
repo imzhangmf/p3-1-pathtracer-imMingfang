@@ -9,48 +9,367 @@
       padding-left: 100px;  
     }  
   </style> 
-<title>Your Name  |  CS 184</title>
+<title>Mingfang Zhang  |  CS 184</title>
 <meta http-equiv="content-type" content="text/html; charset=utf-8" />
 <link rel="stylesheet" type="text/css" href="style.css" media="screen" />
 </head>
 <body>
 <br />
 <h1 align="middle">Assignment 3: PathTracer</h1>
-    <h2 align="middle">Your Name</h2>
+    <h2 align="middle">Mingfang Zhang</h2>
 
     <div class="padded">
-        <p>Use this section to write an overview of the assignment. All of the text in your write-up should be <em>in your own words</em>. If you need to add additional HTML features to this document, you can search the <a href="http://www.w3schools.com/">http://www.w3schools.com/</a> website for instructions. To edit the HTML, you can just copy and paste existing chunks and fill in the text and image file names appropriately.</p>
-        <o>The website writeup is intended to be a self-contained walkthrough of the assignment: we want this to be a piece of work which showcases your understanding of relevant concepts through both mesh images as well as written explanations about what you did to complete each part of the assignment. Try to be as clear and organized as possible when writing about your own output files or extensions to the assignment. We want to understand what you've achieved and how you've done it!</p> 
-        <p>If you are well-versed in web development, feel free to ditch this template and make a better looking page. Just make sure that you include all the components as we've laid them out here. </p>
+    
+    <p>I implemented the core routines of a physically-based renderer using a pathtracing algorithm. This assignment includes ray-scene intersection(Part 1), acceleration structures(Part 2), and physically based lighting and materials(Part 345).</p>
 
     <h2 align="middle">Part 1: Ray Generation and Intersection</h2>
-        <p>Describe what you did in Part 1. etc...</p>
-        <div align="center">
-            <table style="width=100%">
-                <tr>
-                    <td align="middle">
-                    <img src="images/example_image.png" width="480px" />
-                    <figcaption align="middle">Results Caption: my bunny is the bounciest bunny</figcaption>
-                </tr>
-            </table>
-        </div>
-        <p>Here is an example of how to include a simple formula:</p>
-        <p align="middle"><pre align="middle">a^2 + b^2 = c^2</pre></p>
-        <p>or, alternatively, you can include an SVG image of a LaTex formula.</p>
-        <p>This time it's your job to copy-paste in the rest of the sections :)</p>
+
+    <h3>1-1</h3>
+
+    <p>To generate a ray from the eye/camera to the object through a point P in the sensor plane, I need to first get the coordinate of P on the sensor and the 3D vector pointing from the eye to P, then set the vector's direction as the ray's direction and set the eye's position as the ray's origin and set other related parameters. (The work above is done in camera.cpp) Then we focus on a pixel on the sensor, and we need to get a Spectrum corresponding to the integral of the irradiance over this pixel, which we will estimate by averaging over ns_aa samples. To implement it, I generate ns_aa rays at random coordinate near the pixel (if ns_aa == 1, the coordinate is fixed at (x+.5,y+.5)), then I evaluate the radiance of a ray r with <code>est_radiance_global_illumination(r)</code>, whose job is to test if the ray intersects with any objects, if so, we get the closest point's estimated irradiance, then average ns_aa rays to get the final Spectrum of the pixel.</p>
+
+    <h3>1-2</h3>
+
+    <p>Then we talk about triangle and sphere intersection. They work in the same way which is to solve  equations.</p>
+
+    <p>For triangles, the equations are:</p>
+
+    <p align="middle"><pre align="middle">r(t)=o+td</pre></p>
+
+    <p align="middle"><pre align="middle">r(t)=(1-b_1-b_2)P_0+b_1P_1+b_2P_2</pre></p>
+
+    <p>And there is an algorithm called moller-trumbore algorthm to solve the equation as is shown in the lecture slide.</p>
+
+    <p>For spheres, the equations are:</p>
+
+    <p align="middle"><pre align="middle">r(t)=o+td</pre></p>
+
+    <p align="middle"><pre align="middle">(r(t)-c)^2-R^2=0</pre></p>
+
+    <p>After solving the equation, if we get a t between r.min_t and r.max_t and other parameters also satisfy related constrains, we can say this ray hit the object and can be seen on the sensor and we also need to we update the r.max_t to the new t, and fill the intersection struct.</p>
+
+    <h3>1-3</h3>
+
+    <div align="middle">
+      <table style="width=100%">
+        <tr>
+          <td>
+            <img src="images/1-1.png" align="middle" width="100%"/>
+            <figcaption align="middle">spheres</figcaption>
+          </td>
+          <td>
+            <img src="images/1-2.png" align="middle" width="100%"/>
+            <figcaption align="middle">cow</figcaption>
+          </td>
+        </tr>
+      </table>
+    </div>
 
 
 
-    <h2 align="middle">A Few Notes On Webpages</h2>
-        <p>Here are a few problems students have encountered in the past. You will probably encounter these problems at some point, so don't wait until right before the deadline to check that everything is working. Test your website on the instructional machines early!</p>
-        <ul>
-        <li>Your main report page should be called index.html.</li>
-        <li>Be sure to include and turn in all of the other files (such as images) that are linked in your report!</li>
-        <li>Use only <em>relative</em> paths to files, such as <pre>"./images/image.jpg"</pre>
-        Do <em>NOT</em> use absolute paths, such as <pre>"/Users/student/Desktop/image.jpg"</pre></li>
-        <li>Pay close attention to your filename extensions. Remember that on UNIX systems (such as the instructional machines), capitalization matters. <pre>.png != .jpeg != .jpg != .JPG</pre>
-        <li>Be sure to adjust the permissions on your files so that they are world readable. For more information on this please see this tutorial: <a href="http://www.grymoire.com/Unix/Permissions.html">http://www.grymoire.com/Unix/Permissions.html</a></li>
-        <li>And again, test your website on the instructional machines early!</li>
+
+    <h2 align="middle">Part 2: Bounding Volume Hierarchy</h2>
+
+    <h3>2-1</h3>
+
+    <p>In order to construct the Bounding Volume Hierarchy algorithm, as the project instruction said, firstly, I compute the bounding box of the primitives, if the number of primitives is less than max_leaf_size, just put them all in one node and return. If not, I need to divide the primitives into two sets: left and right, and then recurse.</p>
+
+    <p>About how to divide the primitives into two sets, I'll explain the heuristic for picking the splitting point: Firstly, I pick the axis to split on by choosing the largest dimension of the bounding box's extent. Secondly, I split the bounding box by the midpoint on the chosen axis. After splitting, I check if there are some primitives on each side, if there is a side having no primitives in it, I will split again on the other side. Then I assign the left and right children of this node to be two new calls to <code>construct_bvh()</code> with the two primitive lists I just generated before I return the node.</p>
+
+    <h3>2-2</h3>
+
+    <p>My BVH intersection algorithm: I dealt with xyz axis seperatly to accelerate. First, I checked if there is a intersection on that direction, if not, I set the intersecting time as infinite. If there is, I solve the equation below:</p>
+
+    <p align="middle"><pre align="middle">r(t)=o+td</pre></p>
+
+    <p align="middle"><pre align="middle">r(t)=p'</pre></p>
+
+    <p>Since there are two planes on one direction, taking x as example, I get x_tmin and x_tmax. In the same way, I get y's and z's tmin and tmax. Then I can get the tmin and tmax for the 3D bounding box, by setting tmin as max(x_tmin,y_tmin,z_tmin), and setting tmax as min(x_tmax,y_tmax,z_tmax).</p>
+
+    <h3>2-3</h3>
+
+    <div align="middle">
+      <table style="width=100%">
+        <tr>
+          <td>
+            <img src="images/2-1.png" align="middle" width="100%"/>
+            <figcaption align="middle">beast</figcaption>
+          </td>
+          <td>
+            <img src="images/2-2.png" align="middle" width="100%"/>
+            <figcaption align="middle">maxplanck</figcaption>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+
+    <h3>2-4</h3>
+    <p>Rendering cow before and after implementing bvh</p>
+
+    <div align="middle">
+      <table style="width=100%">
+        <tr>
+          <td>
+            <img src="images/2-01.png" align="middle" width="100%"/>
+            <figcaption align="middle">117.12s</figcaption>
+          </td>
+          <td>
+            <img src="images/2-02.png" align="middle" width="100%"/>
+            <figcaption align="middle">0.39s</figcaption>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <p>Rendering teapot before and after implementing bvh</p>
+
+    <div align="middle">
+      <table style="width=100%">
+        <tr>
+          <td>
+            <img src="images/2-03.png" align="middle" width="100%"/>
+            <figcaption align="middle">54.91s</figcaption>
+          </td>
+          <td>
+            <img src="images/2-04.png" align="middle" width="100%"/>
+            <figcaption align="middle">0.34s</figcaption>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <h2 align="middle">Part 3: Direct Illumination</h2>
+
+    <h3>3-1</h3>
+
+    <h4>Uniform hemisphere sampling</h4>
+
+    <p>As the project instruction said, at a high level, it should take samples in a uniform hemisphere around the point of interest (hit_p), and for each ray that intersects a light source, compute the incoming radiance from that light source, then convert it to the outgoing radiance using the BSDF at the surface, and finally average across all samples.</p>
+
+    <p>To implement it, for each sample ray (we have num_sample sample rays), cast a ray from our hit point in the sample direction and test against the bvh to see if it intersects the scene anywhere using <code>bvh->intersect()</code>. If so, use <code>get_emission()</code> to get an incoming radiance. To properly transform it to irradiance, I multiply it by the BSDF and cos_theta(ray_direction). Then I accumulate them and average the sum and divided it by pdf as Monte Carlo Integration described.</p>
+
+
+    <h4>Importance sampling by sampling over lights</h4>
+
+    <p>As the project instruction said, at a high level, it should sum over every light source in the scene, taking samples from the surface of each light, computing the incoming radiance from those sampled directions, then converting those to outgoing radiance using the BSDF at the surface. Namely, instead of uniformly sampling in a hemisphere, we sample each light directly.</p>
+
+    <p>To implement it, we should first set the num_samples. For every light from the scene, if it is delta light, num_samples = 1, else num_samples = ns_area_light. Then we used <code>light->sample_L()</code> to get the incoming radiance along with the distance and direction from hit_p to the light source and a pdf float giving the probability density function evaluated at the returned wi direction. If the sampled light point doesn't lie behind the surface, we cast a shadow ray from the intersection point towards the light, testing against the bvh to see if it intersects the scene anywhere. If the ray does not intersect the scene, calculate the BSDF value and accumulate the result.</p>
+
+    <h3>3-2</h3>
+
+    <div align="middle">
+      <table style="width=100%">
+        <tr>
+          <td>
+            <img src="images/3-1.png" align="middle" width="100%"/>
+            <figcaption align="middle">Uniform hemisphere sampling, -s 16 -l 8</figcaption>
+          </td>
+          <td>
+            <img src="images/3-2.png" align="middle" width="100%"/>
+            <figcaption align="middle">Uniform hemisphere sampling, -s 64 -l 32</figcaption>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <img src="images/3-3.png" align="middle" width="100%"/>
+            <figcaption align="middle">Light sampling, -s 64 -l 32</figcaption>
+          </td>
+          <td>
+            <img src="images/3-4.png" align="middle" width="100%"/>
+            <figcaption align="middle">Light sampling, -s 64 -l 32</figcaption>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <h3>3-3</h3>
+
+    <div align="middle">
+      <table style="width=100%">
+        <tr>
+          <td>
+            <img src="images/3-5.png" align="middle" width="100%"/>
+            <figcaption align="middle">Light sampling, -s 1 -l 1</figcaption>
+          </td>
+          <td>
+            <img src="images/3-6.png" align="middle" width="100%"/>
+            <figcaption align="middle">Light sampling, -s 1 -l 4</figcaption>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <img src="images/3-7.png" align="middle" width="100%"/>
+            <figcaption align="middle">Light sampling, -s 1 -l 16</figcaption>
+          </td>
+          <td>
+            <img src="images/3-8.png" align="middle" width="100%"/>
+            <figcaption align="middle">Light sampling, -s 1 -l 64</figcaption>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <h3>3-4</h3>
+    <div align="middle">
+      <table style="width=100%">
+        <tr>
+          <td>
+            <img src="images/3-10.png" align="middle" width="100%"/>
+            <figcaption align="middle">Uniform hemisphere sampling, -s 16 -l 8</figcaption>
+          </td>
+          <td>
+            <img src="images/3-2.png" align="middle" width="100%"/>
+            <figcaption align="middle">Uniform hemisphere sampling, -s 64 -l 32</figcaption>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <img src="images/3-9.png" align="middle" width="100%"/>
+            <figcaption align="middle">Light sampling, -s 16 -l 8</figcaption>
+          </td>
+          <td>
+            <img src="images/3-4.png" align="middle" width="100%"/>
+            <figcaption align="middle">Light sampling, -s 64 -l 32</figcaption>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <h2 align="middle">Part 4: Global Illumination</h2>
+
+    <h3>4-1</h3>
+
+    <p>In order to improve the lighting performance, I calculate indirect lighting besides direct lighting (Part 3). Firstly, we implement <code>zero_bounc_radiance()</code>, which calculate the radiance generated by the light source. Secondly, we implement <code>at_least_one_bounce_radiance()</code>, which calculate the radiance generated by other parts of the scene. To implement it, we use Russian Roulette to allow rays to bounce around the scene and makes it more and more unlikely to bounce again. To be specific, first, we calculate the direct light on the intersection point using <code>one_bounce_radiance()</code>, then I compare the ray's current depth and the max_ray_depth, if current depth is large enough, we stop recursing. Otherwise, we randomly decide with a probability  whether or not to terminate. If we choose to recurse, we create a ray from the intersection point with a random direction. If the new ray hit the scene somewhere, we call <code>at_least_one_bounce_radiance()</code> at that point recursively to find its radiance, and convert it to irradiance as we did a lot of times before.</p>
+
+    <h3>4-2</h3>
+
+    <div align="middle">
+      <table style="width=100%">
+        <tr>
+          <td>
+            <img src="images/4-0.png" align="middle" width="100%"/>
+            <figcaption align="middle">global illumination, -s 1024</figcaption>
+          </td>
+          <td>
+            <img src="images/4-00.png" align="middle" width="100%"/>
+            <figcaption align="middle">global illumination, -s 1024</figcaption>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <h3>4-3</h3>
+
+    <div align="middle">
+      <table style="width=100%">
+        <tr>
+          <td>
+            <img src="images/4-1.png" align="middle" width="100%"/>
+            <figcaption align="middle">Only direct lighting, -s 1024</figcaption>
+          </td>
+          <td>
+            <img src="images/4-2.png" align="middle" width="100%"/>
+            <figcaption align="middle">Only indirect lighting, -s 1024</figcaption>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <h3>4-4</h3>
+
+    <div align="middle">
+      <table style="width=100%">
+        <tr>
+          <td>
+            <img src="images/4-4-0.png" align="middle" width="100%"/>
+            <figcaption align="middle">-s 1024, -m 0</figcaption>
+          </td>
+          <td>
+            <img src="images/4-4-1.png" align="middle" width="100%"/>
+            <figcaption align="middle">-s 1024, -m 1</figcaption>
+          </td>
+          <td>
+            <img src="images/4-4-2.png" align="middle" width="100%"/>
+            <figcaption align="middle">-s 1024, -m 2</figcaption>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <img src="images/4-4-3.png" align="middle" width="100%"/>
+            <figcaption align="middle">-s 1024 -m 3</figcaption>
+          </td>
+          <td>
+            <img src="images/4-4-100.png" align="middle" width="100%"/>
+            <figcaption align="middle">-s 1024, -m 100</figcaption>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <h3>4-5</h3>
+
+    <div align="middle">
+      <table style="width=100%">
+        <tr>
+          <td>
+            <img src="images/spheres1.png" align="middle" width="100%"/>
+            <figcaption align="middle">-s 1</figcaption>
+          </td>
+          <td>
+            <img src="images/spheres2.png" align="middle" width="100%"/>
+            <figcaption align="middle">-s 2</figcaption>
+          </td>
+          <td>
+            <img src="images/spheres4.png" align="middle" width="100%"/>
+            <figcaption align="middle">-s 4</figcaption>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <img src="images/spheres8.png" align="middle" width="100%"/>
+            <figcaption align="middle">-s 8</figcaption>
+          </td>
+          <td>
+            <img src="images/spheres16.png" align="middle" width="100%"/>
+            <figcaption align="middle">-s 16</figcaption>
+          </td>
+          <td>
+            <img src="images/spheres64.png" align="middle" width="100%"/>
+            <figcaption align="middle">-s 64</figcaption>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <img src="images/spheres1024.png" align="middle" width="100%"/>
+            <figcaption align="middle">-s 1024</figcaption>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <h2 align="middle">Part 5: Adaptive Sampling</h2>
+
+    <h3>5-1</h3>
+
+    <p>In order to make rendering faster, we use adaptive sampling which allows us to sample different times in different parts of the picture, since we notice that some pixels converge faster with low sampling rates, while other pixels require many more samples to get rid of noise. To test how fast a given pixel's radiance is converging, we use the algorithm calculating the mean and variance of the samples we've already calculated. If the illuminance of the pixel is determined within a 95% confidence interval by the algorithm, we stop taking more samples from that pixel.</p>
+
+    <h3>5-2</h3>
+    <div align="middle">
+      <table style="width=100%">
+        <tr>
+          <td>
+            <img src="images/5-1.png" align="middle" width="100%"/>
+            <figcaption align="middle">-s 2048 -a 64 0.05 -l 1 -m 5</figcaption>
+          </td>
+          <td>
+            <img src="images/5-2.png" align="middle" width="100%"/>
+            <figcaption align="middle">convergence rate</figcaption>
+          </td>
+        </tr>
+      </table>
+    </div>
+
 </div>
 </body>
 </html>
